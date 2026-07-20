@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 
-const GREETING = "Hi! How can I help you today?";
-
-function useTypewriter(text: string, speedMs = 28) {
+function useTypewriter(text: string, ready: boolean, speedMs = 28) {
   const [shown, setShown] = useState("");
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    if (!ready || !text) return;
     setShown("");
     setDone(false);
     let i = 0;
@@ -22,13 +22,22 @@ function useTypewriter(text: string, speedMs = 28) {
       }
     }, speedMs);
     return () => clearInterval(id);
-  }, [text, speedMs]);
+  }, [text, ready, speedMs]);
 
   return { shown, done };
 }
 
 export default function Hub() {
-  const { shown, done } = useTypewriter(GREETING);
+  const { data: session, status } = useSession();
+
+  const displayName =
+    session?.user?.name?.split(" ")[0] ||
+    session?.user?.email?.split("@")[0] ||
+    "there";
+  const greeting = `Hi! ${displayName} — how can I help you today?`;
+  const sessionReady = status === "authenticated";
+
+  const { shown, done } = useTypewriter(greeting, sessionReady);
 
   return (
     <>
@@ -45,7 +54,25 @@ export default function Hub() {
           </svg>
           AI Dev Tools
         </span>
-        <span className="tagline">Free-tier stack — Groq + GitHub API</span>
+        <div className="nav-auth">
+          {status === "loading" ? null : session?.user ? (
+            <>
+              <span className="user-chip">
+                <span className="user-avatar">
+                  {session.user.image ? (
+                    <img src={session.user.image} alt={session.user.name || "User"} />
+                  ) : (
+                    (session.user.name || session.user.email || "?")[0]
+                  )}
+                </span>
+                {session.user.name || session.user.email}
+              </span>
+              <button onClick={() => signOut({ callbackUrl: "/login" })}>Sign out</button>
+            </>
+          ) : (
+            <Link href="/login">Sign in</Link>
+          )}
+        </div>
       </nav>
 
       <div className="hub-shell">
@@ -56,8 +83,8 @@ export default function Hub() {
             </svg>
           </span>
           <div className="greet-bubble">
-            {shown}
-            <span className={`caret${done ? " blink" : ""}`}>▍</span>
+            {sessionReady ? shown : ""}
+            {sessionReady && <span className={`caret${done ? " blink" : ""}`}>▍</span>}
           </div>
         </div>
 
