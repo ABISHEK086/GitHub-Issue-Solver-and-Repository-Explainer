@@ -3,9 +3,6 @@ import path from "path";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 
-// A JSON file is enough for a portfolio project — swap this module for a
-// real database (Postgres/SQLite/etc.) before ever deploying this publicly.
-// Do NOT commit data/users.json — it holds password hashes.
 const DATA_DIR = path.join(process.cwd(), "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 
