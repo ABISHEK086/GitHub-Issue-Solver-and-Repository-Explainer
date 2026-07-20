@@ -1,0 +1,11 @@
+# frontend
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/prisma/dev.db
+frontend/prisma/dev.db-journal
+
+# backend
+backend/venv/
+backend/.env
+backend/__pycache__/
