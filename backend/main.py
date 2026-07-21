@@ -39,7 +39,7 @@ INTERESTING_FILES = [
 
 MAX_TREE_ENTRIES = 400          # cap how many paths we send to the LLM
 MAX_FILE_CHARS = 3000           # cap per-file content sent to the LLM (repo overview / README)
-MAX_ISSUE_FILE_CHARS = 6000     # cap for full file content shown when solving an issue
+MAX_ISSUE_FILE_CHARS = 8000     # cap for full file content shown when solving an issue
 
 app = FastAPI(title="GitHub Repository Explainer")
 
@@ -99,7 +99,21 @@ async def gh_call(client: httpx.AsyncClient, method: str, url: str, **kwargs):
     if resp.status_code in (200, 201):
         return resp
     try:
-        gh_message = resp.json().get("message", resp.text[:300])
+        body = resp.json()
+        gh_message = body.get("message", resp.text[:300])
+        # 422s from GitHub almost always just say "Validation Failed" at the
+        # top level — the actually useful reason lives in this array.
+        error_details = body.get("errors")
+        if error_details:
+            detail_strs = []
+            for err in error_details:
+                if isinstance(err, dict):
+                    piece = err.get("message") or f"{err.get('field', '?')}: {err.get('code', '?')}"
+                    detail_strs.append(str(piece))
+                else:
+                    detail_strs.append(str(err))
+            if detail_strs:
+                gh_message = f"{gh_message} — {'; '.join(detail_strs)}"
     except Exception:
         gh_message = resp.text[:300]
 
@@ -267,15 +281,18 @@ async def fetch_issue(owner: str, repo: str, issue_number: int) -> dict:
 
 async def fetch_referenced_files(owner: str, repo: str, issue: dict, file_paths: list[str]) -> dict:
     """Finds files whose name is mentioned in the issue title/body and fetches
-    their FULL content, so the model can ground a 'modify' in the real file
-    instead of guessing — the root cause of truncated/destructive edits."""
+    their content (capped for token safety) — used both to show the model
+    ground truth and as the base text that snippet patches get applied to
+    deterministically (see apply_snippet_patch). If a fix falls beyond the
+    cap, apply_snippet_patch simply won't find the snippet and skips safely
+    with a warning — it never corrupts the file, unlike full-file regeneration."""
     haystack = f"{issue['title']} {issue['body']}".lower()
     candidates = []
     for path in file_paths:
         basename = os.path.basename(path).lower()
         if len(basename) > 3 and basename in haystack:
             candidates.append(path)
-    candidates = candidates[:2]  # keep prompt size sane
+    candidates = candidates[:1]  # one full file is usually what an issue targets; keeps tokens bounded
 
     referenced: dict = {}
     async with httpx.AsyncClient(timeout=20.0) as client:
@@ -294,45 +311,70 @@ async def fetch_referenced_files(owner: str, repo: str, issue: dict, file_paths:
     return referenced
 
 
-def validate_file_changes(file_changes: list[dict], referenced_files: dict) -> tuple[list[dict], list[str]]:
-    """Drops any 'modify' whose generated content looks truncated relative to
-    the real original — catches the '# rest of the file...' failure mode
-    before it ever reaches a commit. Returns (safe_changes, warnings)."""
-    truncation_markers = re.compile(
-        r"(#|//|/\*|<!--)\s*(rest of|remaining|existing code|unchanged|previous code|\.\.\.\s*$)",
-        re.IGNORECASE | re.MULTILINE,
-    )
+def apply_snippet_patch(original: str, old_snippet: str, new_snippet: str) -> tuple[Optional[str], Optional[str]]:
+    """Deterministically applies a single snippet replacement to real file
+    text. Returns (patched_text, None) on success, or (None, error_message)
+    if old_snippet isn't found (or isn't unique) in the original — in which
+    case nothing is written. This is what makes the fix safe: the model never
+    gets to rewrite a whole file, so there's nothing for it to truncate."""
+    if not old_snippet:
+        return None, "no old_snippet provided"
+    count = original.count(old_snippet)
+    if count == 0:
+        return None, "the referenced code snippet wasn't found in the file (likely hallucinated) — skipped"
+    if count > 1:
+        return None, f"the referenced snippet appears {count} times in the file (not unique) — skipped to avoid an ambiguous edit"
+    return original.replace(old_snippet, new_snippet, 1), None
+
+
+def apply_file_changes(raw_changes: list[dict], referenced_files: dict) -> tuple[list[dict], list[str]]:
+    """Turns the model's proposed changes into final {path, action, content}
+    entries ready to commit. 'create' actions pass through as-is (there's no
+    original to patch against). 'modify' actions get resolved via
+    apply_snippet_patch against the real fetched file — if that fails for any
+    reason, the change is dropped with a warning instead of ever reaching a
+    commit. Returns (safe_changes, warnings)."""
     safe_changes = []
     warnings = []
 
-    for fc in file_changes:
+    for fc in raw_changes:
         path = fc.get("path", "")
-        content = fc.get("content", "") or ""
         action = fc.get("action", "")
-        original = referenced_files.get(path)
 
-        if action == "modify" and original:
-            too_short = len(content) < len(original) * 0.6 and len(original) > 400
-            has_marker = bool(truncation_markers.search(content))
-            if too_short or has_marker:
+        if action == "create":
+            content = fc.get("content", "")
+            if not content:
+                warnings.append(f"Skipped creating '{path}' — no content was provided.")
+                continue
+            safe_changes.append({"path": path, "action": "create", "content": content})
+            continue
+
+        if action == "modify":
+            original = referenced_files.get(path)
+            if original is None:
                 warnings.append(
-                    f"Dropped a proposed change to '{path}' — it looked truncated "
-                    f"(the model wrote a placeholder instead of the full file) rather "
-                    f"than risk overwriting it with incomplete content. Try re-running "
-                    f"the analysis, or edit this file yourself using the plan above."
+                    f"Dropped a proposed change to '{path}' — the real file content wasn't "
+                    f"available to safely ground the edit against."
                 )
                 continue
 
-        safe_changes.append(fc)
+            old_snippet = fc.get("old_snippet", "")
+            new_snippet = fc.get("new_snippet", "")
+            patched, error = apply_snippet_patch(original, old_snippet, new_snippet)
+            if error:
+                warnings.append(f"Dropped a proposed change to '{path}' — {error}.")
+                continue
+
+            safe_changes.append({"path": path, "action": "modify", "content": patched})
+            continue
+
+        warnings.append(f"Skipped '{path}' — unknown action '{action}'.")
 
     return safe_changes, warnings
 
 
 def build_issue_prompt(owner: str, repo: str, issue: dict, repo_data: dict, referenced_files: dict) -> list[dict]:
-    tree_listing = "\n".join(repo_data["file_paths"][:150])
-    key_files_block = "\n\n".join(
-        f"--- {path} ---\n{content[:800]}" for path, content in list(repo_data["key_files"].items())[:4]
-    ) or "(none found)"
+    tree_listing = "\n".join(repo_data["file_paths"][:40])
 
     referenced_block = "\n\n".join(
         f"--- {path} (FULL CURRENT CONTENT — {len(content)} chars) ---\n{content}"
@@ -343,9 +385,10 @@ def build_issue_prompt(owner: str, repo: str, issue: dict, repo_data: dict, refe
         "You are a senior software engineer who reads GitHub issues, plans a fix, "
         "and writes the actual code changes. You always respond with STRICT JSON "
         "matching the requested schema, and nothing else — no markdown fences, no "
-        "prose outside the JSON. You are conservative: you only touch files you're "
-        "reasonably confident about, and you write complete, working file contents, "
-        "never partial diffs or placeholders like '...rest of file'."
+        "prose outside the JSON. For existing files you propose small, surgical "
+        "snippet replacements (old_snippet -> new_snippet), copied exactly from the "
+        "real file content you're shown — never a placeholder, never the whole file. "
+        "You are conservative: you only touch files you're reasonably confident about."
     )
 
     user_prompt = f"""An engineer needs help resolving this GitHub issue.
@@ -355,16 +398,10 @@ Issue #{issue['number']}: {issue['title']}
 Labels: {', '.join(issue['labels']) or 'none'}
 
 ISSUE BODY:
-{issue['body'] or '(no description provided)'}
+{(issue['body'] or '(no description provided)')[:1200]}
 
-REPOSITORY FILE TREE (may be truncated):
+REPO FILE TREE (partial):
 {tree_listing}
-
-README (may be truncated):
-{(repo_data['readme'] or '(no README found)')[:1000]}
-
-KEY CONFIG / MANIFEST FILES:
-{key_files_block}
 
 FULL CONTENT OF FILES NAMED IN THE ISSUE (use these as ground truth if you modify them):
 {referenced_block}
@@ -376,8 +413,14 @@ Respond with ONLY a JSON object with this exact schema:
   "file_changes": [
     {{
       "path": "relative/path/to/file.ext",
-      "action": "create or modify",
-      "content": "The COMPLETE file content after your change — the full file, not a diff or snippet"
+      "action": "modify",
+      "old_snippet": "The EXACT existing lines being replaced, copied character-for-character from the file shown above — as short as possible while still being uniquely identifiable in the file (a few lines, not the whole file)",
+      "new_snippet": "The replacement lines only"
+    }},
+    {{
+      "path": "relative/path/to/new_file.ext",
+      "action": "create",
+      "content": "The complete content of a brand-new file (only for files that don't exist yet)"
     }}
   ],
   "pr_title": "Concise conventional-commit-style PR title, e.g. 'fix: handle null user on login'",
@@ -388,8 +431,9 @@ RULES:
 1. Limit file_changes to at most 3 files — the smallest change that plausibly resolves the issue.
 2. If you're not confident a change is correct without seeing more of the codebase, say so honestly in "summary" and keep file_changes minimal or empty rather than guessing destructively.
 3. Never invent files unrelated to the issue.
-4. "content" must be the ENTIRE resulting file — anyone applying it will overwrite the file with exactly this text.
-5. CRITICAL for "modify": if the file appears in "FULL CONTENT OF FILES NAMED IN THE ISSUE" above, your "content" must start from that EXACT original text, character for character, with ONLY your specific fix inserted or changed — copy every unrelated line as-is. NEVER write a placeholder like "# rest of the file...", "// unchanged", or similar — doing so deletes real code when applied and is treated as a critical failure. If the file is too long for you to safely reproduce in full, do NOT include it in file_changes at all; explain the limitation in "summary" instead."""
+4. For "modify": NEVER output the whole file. "old_snippet" must be copied EXACTLY (character-for-character, including whitespace/indentation) from the "FULL CURRENT CONTENT" shown above for that file — even one wrong character means the patch can't be applied. Keep it as short as possible while still being unique in the file (ideally 1-6 lines). "new_snippet" is just the replacement for those lines, nothing else.
+5. For "create": only use this for files that genuinely don't exist yet. "content" is the complete new file.
+6. If the file you need to modify isn't shown in "FULL CONTENT OF FILES NAMED IN THE ISSUE" above, don't guess at its content — explain the limitation in "summary" instead and leave it out of file_changes."""
 
     return [
         {"role": "system", "content": system_prompt},
@@ -443,7 +487,7 @@ def sanitize_mermaid(raw: str) -> str:
     return "\n".join(cleaned)
 
 
-async def call_groq(messages: list[dict], model: str = GROQ_MODEL) -> dict:
+async def call_groq(messages: list[dict], model: str = GROQ_MODEL, max_tokens: int = 4096) -> dict:
     if not GROQ_API_KEY:
         raise HTTPException(
             status_code=500,
@@ -460,6 +504,7 @@ async def call_groq(messages: list[dict], model: str = GROQ_MODEL) -> dict:
                 "model": model,
                 "messages": messages,
                 "temperature": 0.2,
+                "max_tokens": max_tokens,
                 "response_format": {"type": "json_object"},
             },
         )
@@ -576,9 +621,9 @@ async def analyze_issue(req: IssueAnalyzeRequest):
     repo_data = await fetch_repo_data(owner, repo)
     referenced_files = await fetch_referenced_files(owner, repo, issue, repo_data["file_paths"])
     messages = build_issue_prompt(owner, repo, issue, repo_data, referenced_files)
-    result = await call_groq(messages, model=GROQ_MODEL_ISSUE)
+    result = await call_groq(messages, model=GROQ_MODEL_ISSUE, max_tokens=1000)
 
-    safe_changes, warnings = validate_file_changes(result.get("file_changes", []), referenced_files)
+    safe_changes, warnings = apply_file_changes(result.get("file_changes", []), referenced_files)
     result["file_changes"] = safe_changes
     if warnings:
         result["summary"] = result.get("summary", "") + "\n\n⚠️ " + " ".join(warnings)
@@ -617,7 +662,6 @@ async def create_pr(req: CreatePRRequest):
         raise HTTPException(status_code=400, detail="No file changes to commit.")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # 1. Get the SHA of the base branch's latest commit
         try:
             ref_resp = await gh_call(
                 client, "GET",
@@ -630,9 +674,6 @@ async def create_pr(req: CreatePRRequest):
             )
         base_sha = ref_resp.json()["object"]["sha"]
 
-        # 2. Create the new branch pointing at that commit — if it already exists
-        # (e.g. a retry after an earlier step failed last time), just reuse it
-        # rather than erroring, so retries with the same branch name work.
         try:
             await gh_call(
                 client, "POST",
@@ -739,7 +780,6 @@ async def file_content(req: FileContentRequest):
         sha = j.get("sha")
 
         if not content_b64 and sha:
-            # Files over 1MB omit "content" from the contents API — fall back to the blob API
             blob_resp = await gh_call(client, "GET", f"{GITHUB_API}/repos/{req.owner}/{req.repo}/git/blobs/{sha}")
             content_b64 = blob_resp.json().get("content", "")
 

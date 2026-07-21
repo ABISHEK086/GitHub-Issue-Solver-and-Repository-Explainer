@@ -1,5 +1,3 @@
-// A subset of GitHub's linguist language colors — used to render the
-// repo language bar exactly like the real GitHub UI.
 export const LANGUAGE_COLORS: Record<string, string> = {
   JavaScript: "#f1e05a",
   TypeScript: "#3178c6",
