@@ -1,8 +1,3 @@
-"""
-GitHub Repository Explainer - Backend
-Fetches a public GitHub repo's structure + README, sends it to Groq's free
-LLM API, and returns a structured architecture explanation + Mermaid diagram.
-"""
 import os
 import re
 import json
