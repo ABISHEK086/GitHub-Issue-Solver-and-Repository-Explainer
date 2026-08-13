@@ -69,17 +69,17 @@ backend hosts (e.g. after deploying) is a one-line env var change.
 ```
 github-repo-explainer/
 ├── backend/
-│   ├── main.py               # FastAPI app: GitHub fetch + Groq call
+│   ├── main.py               
 │   ├── requirements.txt
 │   └── .env.example
-├── frontend/                 # Next.js 14 (App Router) + TypeScript
+├── frontend/               
 │   ├── app/
-│   │   ├── page.tsx          # Main UI: input, results, sections
-│   │   ├── layout.tsx        # Fonts (Space Grotesk + JetBrains Mono) + metadata
-│   │   ├── globals.css       # Blueprint/schematic theme
-│   │   ├── MermaidDiagram.tsx# Client component that renders the Mermaid SVG
-│   │   └── types.ts          # Shared response types
-│   ├── next.config.js        # Rewrites /api/* to the FastAPI backend
+│   │   ├── page.tsx          
+│   │   ├── layout.tsx        
+│   │   ├── globals.css      
+│   │   ├── MermaidDiagram.tsx
+│   │   └── types.ts          
+│   ├── next.config.js      
 │   ├── package.json
 │   └── .env.local.example
 └── README.md
