@@ -5,7 +5,7 @@ import { useState, useCallback, useEffect } from "react";
 import type {
   AnalyzeIssueResponse,
   CreatePrResponse,
-  ApiError,
+  ApiError, 
 } from "../types";
 
 export default function IssueSolver() {
