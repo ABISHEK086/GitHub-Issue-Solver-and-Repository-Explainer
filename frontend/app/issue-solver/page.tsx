@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useCallback, useEffect } from "react";
 import type {
   AnalyzeIssueResponse,
-  CreatePrResponse,
+  CreatePrResponse, 
   ApiError, 
 } from "../types";
 
