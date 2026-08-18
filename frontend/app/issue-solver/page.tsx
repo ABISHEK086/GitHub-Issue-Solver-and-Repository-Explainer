@@ -1,11 +1,11 @@
-"use client";
+"use client"; 
 
 import Link from "next/link";
 import { useState, useCallback, useEffect } from "react";
 import type {
   AnalyzeIssueResponse,
-  CreatePrResponse,
-  ApiError,
+  CreatePrResponse, 
+  ApiError, 
 } from "../types";
 
 export default function IssueSolver() {
