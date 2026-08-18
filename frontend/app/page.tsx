@@ -52,7 +52,7 @@ export default function Hub() {
               .51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2
               0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
           </svg>
-          AI Dev Tools
+          Repo-pilot
         </span>
         <div className="nav-auth">
           {status === "loading" ? null : session?.user ? (
@@ -88,7 +88,7 @@ export default function Hub() {
           </div>
         </div>
 
-        <p className="hub-sub">Pick a tool to get started — both run on free API keys.</p>
+        <p className="hub-sub">Pick a tool to get started - both run on free API keys.</p>
 
         <div className="option-grid">
           <Link href="/explainer" className="option-card" style={{ animationDelay: "0.15s" }}>
@@ -139,7 +139,7 @@ export default function Hub() {
         </div>
 
         <footer style={{ borderTop: "none", marginTop: 40 }}>
-          <span>AI Dev Tools</span>
+          <span>Repo-pilot</span>
           <span>Two free-tier portfolio projects, one shared backend</span>
         </footer>
       </div>

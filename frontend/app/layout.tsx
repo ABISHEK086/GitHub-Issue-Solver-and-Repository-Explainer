@@ -16,7 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Dev Tools — Repo Explainer & Issue Solver",
+  title: "Repo-pilot",
   description:
     "Two free-tier AI dev tools: explain any GitHub repo's architecture, or solve a GitHub issue with a generated plan, code changes, and a real PR.",
 };
