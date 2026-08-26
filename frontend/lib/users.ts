@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 
 const DATA_DIR = path.join(process.cwd(), "data");
-const USERS_FILE = path.join(DATA_DIR, "users.json");
+const USERS_FILE = path.join(DATA_DIR, "users.json"); 
 
 export interface StoredUser {
   id: string;
