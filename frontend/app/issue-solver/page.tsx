@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useCallback, useEffect } from "react";
 import type { 
-  AnalyzeIssueResponse,
+  AnalyzeIssueResponse, 
   CreatePrResponse, 
   ApiError, 
 } from "../types";
