@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import type { FileContentResponse, ApiError } from "./types";
 
 interface Props {
-  owner: string;
+  owner: string; 
   repo: string;
   path: string;
   defaultBranch: string;
