@@ -4,7 +4,7 @@ export interface KeyComponent {
 }
 
 export interface LanguageBreakdown {
-  name: string;
+  name: string; 
   percent: number;
 }
 
