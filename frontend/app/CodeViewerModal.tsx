@@ -8,7 +8,7 @@ interface Props {
   repo: string;
   path: string;
   defaultBranch: string;
-  onClose: () => void;
+  onClose: () => void; 
 }
 
 export default function CodeViewerModal({ owner, repo, path, defaultBranch, onClose }: Props) {
