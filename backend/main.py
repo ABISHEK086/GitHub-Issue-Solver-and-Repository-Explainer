@@ -15,10 +15,6 @@ load_dotenv()
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-# The issue solver's prompts include real file content and are much larger
-# than the repo-explainer's — llama-3.3-70b's free tier TPM (12,000) chokes
-# on that. 8b-instant has a far higher free-tier token ceiling and is plenty
-# capable for "insert this fix into this file" style tasks.
 GROQ_MODEL_ISSUE = os.getenv("GROQ_MODEL_ISSUE", "llama-3.1-8b-instant")
 
 GITHUB_API = "https://api.github.com"
