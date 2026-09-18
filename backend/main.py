@@ -20,7 +20,6 @@ GROQ_MODEL_ISSUE = os.getenv("GROQ_MODEL_ISSUE", "llama-3.1-8b-instant")
 GITHUB_API = "https://api.github.com"
 GROQ_API = "https://api.groq.com/openai/v1/chat/completions"
 
-# Files worth reading in full to understand the stack/architecture
 INTERESTING_FILES = [
     "package.json", "requirements.txt", "pyproject.toml", "Cargo.toml",
     "go.mod", "pom.xml", "build.gradle", "Gemfile", "composer.json",
@@ -28,9 +27,9 @@ INTERESTING_FILES = [
     "tsconfig.json", "next.config.js", "vite.config.ts", "vite.config.js",
 ]
 
-MAX_TREE_ENTRIES = 400          # cap how many paths we send to the LLM
-MAX_FILE_CHARS = 3000           # cap per-file content sent to the LLM (repo overview / README)
-MAX_ISSUE_FILE_CHARS = 8000     # cap for full file content shown when solving an issue
+MAX_TREE_ENTRIES = 400
+MAX_FILE_CHARS = 3000
+MAX_ISSUE_FILE_CHARS = 8000  
 
 app = FastAPI(title="GitHub Repository Explainer")
 
