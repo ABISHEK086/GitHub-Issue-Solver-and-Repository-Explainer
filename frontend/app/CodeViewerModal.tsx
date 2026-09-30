@@ -6,7 +6,7 @@ import type { FileContentResponse, ApiError } from "./types";
 interface Props {
   owner: string; 
   repo: string;
-  path: string; 
+  path: string;  
   defaultBranch: string;
   onClose: () => void; 
 }
