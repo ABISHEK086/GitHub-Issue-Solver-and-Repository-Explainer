@@ -5,7 +5,7 @@ export interface KeyComponent {
  
 export interface LanguageBreakdown {
   name: string; 
-  percent: number;
+  percent: number; 
 }
 
 export interface RepoAnalysis {
