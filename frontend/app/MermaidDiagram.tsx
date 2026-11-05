@@ -7,7 +7,7 @@ interface Props {
   chart: string;
   architectureExplanation?: string;
   keyComponents?: KeyComponent[];
-}
+} 
 
 export default function MermaidDiagram({
   chart,
